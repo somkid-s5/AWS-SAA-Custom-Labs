@@ -1,130 +1,59 @@
-# Lab 16: CloudFront + S3 OAC Secure Static Delivery
+# Lab 16: CloudFront with S3 Origin Access Control
 
 ## Business Scenario
-You are the cloud architect for a team preparing production-grade AWS workloads and SAA-C03 interview/exam scenarios. This lab simulates real design decisions under constraints (security, availability, latency, and cost).
+A static website needs global distribution while the S3 bucket stays private and inaccessible from the public internet.
 
 ## Core Services
-CloudFront, S3, OAC
-
-## Learning Outcomes
-- Serve static content globally while blocking direct bucket access.
-- Explain *why* one option is better than alternatives for the given constraints.
-- Produce evidence (screenshots/logs/metrics) to defend your architecture decision.
-
-## Difficulty / Time / Cost
-- **Difficulty**: Intermediate → Advanced
-- **Estimated time**: 90–180 minutes
-- **Estimated cost**: Low-to-medium (depends on runtime; terminate resources immediately after validation)
-
-## Exam Domain Mapping (SAA-C03)
-- **Secure architectures**: IAM boundaries, encryption, least-privilege validation.
-- **Resilient architectures**: fault isolation across AZs, failure testing, recovery checks.
-- **High-performing architectures**: right service choices, scaling patterns, latency checks.
-- **Cost-optimized architectures**: right-sizing, lifecycle policies, managed-service trade-offs.
-
-## Lab Format (How to run)
-1. Build exactly as described.
-2. Record observations after each phase (latency, cost, availability).
-3. Break one component intentionally (failure injection).
-4. Verify monitoring + recovery behavior.
-5. Clean up everything at the end.
-
-
-## Prerequisites
-- AWS account (preferably sandbox) + admin role for lab setup.
-- AWS CLI configured (`aws configure`) and default region selected.
-- Basic familiarity with IAM, VPC, EC2, and CloudWatch.
-- Tagging standard prepared: `Project=SAA-Lab-16`, `Owner=<your-name>`, `TTL=<date>`.
+CloudFront, S3, Origin Access Control
 
 ## Target Architecture
 ```mermaid
 graph TD
-    U[Engineer] --> C[AWS Console / CLI]
-    C --> I[IAM + KMS Controls]
-    C --> N[VPC Network Boundary]
-    N --> A[Application Layer]
-    A --> D[Data Layer]
-    A --> O[Observability: CW Logs/Metrics]
-    D --> B[Backup / DR Controls]
+  User[User] --> CF[CloudFront]
+  CF --> OAC[Origin access control]
+  OAC --> S3[S3 bucket]
 ```
 
-## Implementation Phases (Detailed)
-### Phase 0 — Planning & Guardrails
-1. Define workload requirement in one paragraph (SLA, security class, RTO/RPO, budget ceiling).
-2. Create mandatory tags and naming convention for every resource.
-3. Decide “must-have controls” before deployment (encryption, logging, alerting).
+## Step-by-Step
+1. Create a private S3 bucket for the site assets.
+2. Attach an origin access control to the CloudFront distribution.
+3. Verify that the bucket URL is blocked while the CloudFront URL works.
 
-### Phase 1 — Foundation Build
-1. Provision required network and identity prerequisites.
-2. Create baseline roles/policies with least privilege (avoid wildcard actions/resources).
-3. Enable baseline logs/metrics before workload launch.
-
-### Phase 2 — Workload Deployment
-1. Deploy workload components for this lab objective.
-2. Apply security controls (encryption at rest/in transit, inbound restrictions, secret isolation).
-3. Configure scaling/failover behavior where applicable.
-
-### Phase 3 — Validation (Functional + Security)
-1. Run happy-path functional test (expected business behavior).
-2. Run negative test (blocked access / invalid input / forced failure).
-3. Confirm logs capture both success and failure events.
-
-### Phase 4 — Resilience / Performance Test
-1. Simulate single-component disruption.
-2. Measure time to recover, error rate impact, and user-visible behavior.
-3. Document whether requirements were met.
-
-### Phase 5 — Cost & Operational Review
-1. List top cost drivers from this design.
-2. Propose at least 2 cheaper alternatives and explain trade-offs.
-3. Add alarms/budgets for runaway cost risk.
-
-### Phase 6 — Evidence Pack
-Collect:
-- Console screenshots for architecture and security settings.
-- CLI outputs for core resources.
-- CloudWatch metrics/alarms proving system behavior.
-- A short postmortem paragraph (what failed, why, and mitigation).
-
-## Validation Checklist (Must Pass)
-- [ ] Required resources created with correct tags.
-- [ ] Least-privilege access confirmed (no unnecessary wildcard permissions).
-- [ ] Encryption configured where data is stored.
-- [ ] Monitoring and alerting enabled for critical signals.
-- [ ] Failure test executed and documented.
-- [ ] Cleanup tested and verified.
-
-## CLI Verification Examples
+## CLI Commands
 ```bash
-aws sts get-caller-identity
-aws resourcegroupstaggingapi get-resources --tag-filters Key=Project,Values=SAA-Lab-16
-aws cloudwatch describe-alarms --max-records 20
+aws s3api create-bucket --bucket lab16-site --region ap-southeast-1
+aws cloudfront create-origin-access-control --origin-access-control-config file://oac.json
+aws cloudfront create-distribution --distribution-config file://distribution.json
+aws s3api get-object --bucket lab16-site --key index.html index.html
 ```
 
-## Troubleshooting Playbook
-- If deployment fails, check IAM permission boundaries and service-linked roles.
-- If connectivity fails, inspect route tables, SG/NACL, endpoint policies, and DNS settings.
-- If failover doesn’t trigger, verify health checks/thresholds and cooldown timers.
-- If logs are empty, confirm agent/integration and IAM write permissions to log groups.
+## Expected Output
+- Direct S3 access is denied.
+- CloudFront serves the object successfully.
+- The bucket policy allows only the CloudFront OAC principal.
 
-## Common SAA-C03 Traps for This Topic
-1. Choosing a service that solves performance but violates security requirement.
-2. Assuming HA == DR (it is not; DR includes region-level recovery design).
-3. Ignoring operational burden when a managed option exists.
-4. Over-engineering for rare edge cases while missing baseline controls.
+## Failure Injection
+Try to read the object directly from S3 and confirm AccessDenied, proving the bucket is not public.
 
-## Exam-Style Questions
-1. Which design change improves resilience with the smallest operational overhead?
-2. Which option best reduces cost without violating RTO/RPO?
-3. Which control enforces least privilege most effectively in this scenario?
+## Decision Trade-offs
+| Option | Best for | Strength | Weakness |
+| --- | --- | --- | --- |
+| OAC | Private S3 origins | Stronger modern pattern | Requires policy setup. |
+| OAI | Older CloudFront pattern | Familiar to many teams | Legacy approach. |
+| Public bucket | Simple static hosting | Easy to start | Not acceptable for sensitive content. |
 
-## Cleanup (Strict)
-1. Delete app/data resources created by this lab.
-2. Remove temporary IAM roles/policies not reused.
-3. Delete network artifacts created solely for the lab.
-4. Confirm zero unexpected running resources via Cost Explorer next day.
+## Common Mistakes
+- Leaving the bucket policy public.
+- Forgetting to invalidate the cache after updates.
+- Mixing up the CloudFront domain with the raw S3 endpoint.
 
-## Extension Challenges (Optional, Advanced)
-- Re-implement this lab with Terraform.
-- Add canary/chaos test step and capture MTTR metrics.
-- Add CI validation (lint + policy checks) before deployment.
+## Exam Question
+**Q:** What is the modern way to keep an S3 origin private behind CloudFront?
+
+**A:** Use Origin Access Control so only CloudFront can read from the bucket.
+
+## Cleanup
+- Delete the CloudFront distribution.
+- Remove the origin access control.
+- Empty and delete the S3 bucket.
+

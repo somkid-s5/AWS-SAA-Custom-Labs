@@ -1,130 +1,59 @@
-# Lab 14: Edge/Web Protection with WAF + ALB + Shield
+# Lab 14: WAF, ALB, and Shield
 
 ## Business Scenario
-You are the cloud architect for a team preparing production-grade AWS workloads and SAA-C03 interview/exam scenarios. This lab simulates real design decisions under constraints (security, availability, latency, and cost).
+A public web app needs layer-7 request filtering and a clear place to test how blocked traffic looks to the user.
 
 ## Core Services
-WAF, ALB, Shield Standard
-
-## Learning Outcomes
-- Apply managed rule sets and tune false positives with logging.
-- Explain *why* one option is better than alternatives for the given constraints.
-- Produce evidence (screenshots/logs/metrics) to defend your architecture decision.
-
-## Difficulty / Time / Cost
-- **Difficulty**: Intermediate → Advanced
-- **Estimated time**: 90–180 minutes
-- **Estimated cost**: Low-to-medium (depends on runtime; terminate resources immediately after validation)
-
-## Exam Domain Mapping (SAA-C03)
-- **Secure architectures**: IAM boundaries, encryption, least-privilege validation.
-- **Resilient architectures**: fault isolation across AZs, failure testing, recovery checks.
-- **High-performing architectures**: right service choices, scaling patterns, latency checks.
-- **Cost-optimized architectures**: right-sizing, lifecycle policies, managed-service trade-offs.
-
-## Lab Format (How to run)
-1. Build exactly as described.
-2. Record observations after each phase (latency, cost, availability).
-3. Break one component intentionally (failure injection).
-4. Verify monitoring + recovery behavior.
-5. Clean up everything at the end.
-
-
-## Prerequisites
-- AWS account (preferably sandbox) + admin role for lab setup.
-- AWS CLI configured (`aws configure`) and default region selected.
-- Basic familiarity with IAM, VPC, EC2, and CloudWatch.
-- Tagging standard prepared: `Project=SAA-Lab-14`, `Owner=<your-name>`, `TTL=<date>`.
+WAF, ALB, Shield
 
 ## Target Architecture
 ```mermaid
 graph TD
-    U[Engineer] --> C[AWS Console / CLI]
-    C --> I[IAM + KMS Controls]
-    C --> N[VPC Network Boundary]
-    N --> A[Application Layer]
-    A --> D[Data Layer]
-    A --> O[Observability: CW Logs/Metrics]
-    D --> B[Backup / DR Controls]
+  User[User] --> WAF[WAF web ACL]
+  WAF --> ALB[ALB]
+  ALB --> App[App targets]
+  WAF --> Logs[WAF logs]
 ```
 
-## Implementation Phases (Detailed)
-### Phase 0 — Planning & Guardrails
-1. Define workload requirement in one paragraph (SLA, security class, RTO/RPO, budget ceiling).
-2. Create mandatory tags and naming convention for every resource.
-3. Decide “must-have controls” before deployment (encryption, logging, alerting).
+## Step-by-Step
+1. Create a web ACL with a blocking rule.
+2. Associate the ACL with the ALB.
+3. Send a request that matches the rule and confirm the block.
 
-### Phase 1 — Foundation Build
-1. Provision required network and identity prerequisites.
-2. Create baseline roles/policies with least privilege (avoid wildcard actions/resources).
-3. Enable baseline logs/metrics before workload launch.
-
-### Phase 2 — Workload Deployment
-1. Deploy workload components for this lab objective.
-2. Apply security controls (encryption at rest/in transit, inbound restrictions, secret isolation).
-3. Configure scaling/failover behavior where applicable.
-
-### Phase 3 — Validation (Functional + Security)
-1. Run happy-path functional test (expected business behavior).
-2. Run negative test (blocked access / invalid input / forced failure).
-3. Confirm logs capture both success and failure events.
-
-### Phase 4 — Resilience / Performance Test
-1. Simulate single-component disruption.
-2. Measure time to recover, error rate impact, and user-visible behavior.
-3. Document whether requirements were met.
-
-### Phase 5 — Cost & Operational Review
-1. List top cost drivers from this design.
-2. Propose at least 2 cheaper alternatives and explain trade-offs.
-3. Add alarms/budgets for runaway cost risk.
-
-### Phase 6 — Evidence Pack
-Collect:
-- Console screenshots for architecture and security settings.
-- CLI outputs for core resources.
-- CloudWatch metrics/alarms proving system behavior.
-- A short postmortem paragraph (what failed, why, and mitigation).
-
-## Validation Checklist (Must Pass)
-- [ ] Required resources created with correct tags.
-- [ ] Least-privilege access confirmed (no unnecessary wildcard permissions).
-- [ ] Encryption configured where data is stored.
-- [ ] Monitoring and alerting enabled for critical signals.
-- [ ] Failure test executed and documented.
-- [ ] Cleanup tested and verified.
-
-## CLI Verification Examples
+## CLI Commands
 ```bash
-aws sts get-caller-identity
-aws resourcegroupstaggingapi get-resources --tag-filters Key=Project,Values=SAA-Lab-14
-aws cloudwatch describe-alarms --max-records 20
+aws wafv2 create-web-acl --scope REGIONAL --name lab14-acl --default-action Allow={}
+aws wafv2 put-web-acl-association --web-acl-arn arn:aws:wafv2:ap-southeast-1:123456789012:regional/webacl/lab14-acl/... --resource-arn arn:aws:elasticloadbalancing:ap-southeast-1:123456789012:loadbalancer/app/lab14-alb/...
+curl -H "User-Agent: sqlmap" https://lab14.example.com
 ```
 
-## Troubleshooting Playbook
-- If deployment fails, check IAM permission boundaries and service-linked roles.
-- If connectivity fails, inspect route tables, SG/NACL, endpoint policies, and DNS settings.
-- If failover doesn’t trigger, verify health checks/thresholds and cooldown timers.
-- If logs are empty, confirm agent/integration and IAM write permissions to log groups.
+## Expected Output
+- Matched requests return HTTP 403 or the configured block response.
+- Allowed traffic continues through the ALB normally.
+- WAF logs show the rule that matched.
 
-## Common SAA-C03 Traps for This Topic
-1. Choosing a service that solves performance but violates security requirement.
-2. Assuming HA == DR (it is not; DR includes region-level recovery design).
-3. Ignoring operational burden when a managed option exists.
-4. Over-engineering for rare edge cases while missing baseline controls.
+## Failure Injection
+Send a request that matches the block rule and confirm the ACL, not the application, is the component rejecting it.
 
-## Exam-Style Questions
-1. Which design change improves resilience with the smallest operational overhead?
-2. Which option best reduces cost without violating RTO/RPO?
-3. Which control enforces least privilege most effectively in this scenario?
+## Decision Trade-offs
+| Option | Best for | Strength | Weakness |
+| --- | --- | --- | --- |
+| WAF | L7 filtering | Fine-grained rules | Not a full network firewall. |
+| SG | Network allow lists | Simple | No HTTP-aware rules. |
+| Shield Advanced | DDoS protection | Strong managed defense | Primarily for large public workloads. |
 
-## Cleanup (Strict)
-1. Delete app/data resources created by this lab.
-2. Remove temporary IAM roles/policies not reused.
-3. Delete network artifacts created solely for the lab.
-4. Confirm zero unexpected running resources via Cost Explorer next day.
+## Common Mistakes
+- Expecting WAF to replace security groups.
+- Writing overly broad or incorrectly ordered rules.
+- Forgetting to enable logging on the ACL.
 
-## Extension Challenges (Optional, Advanced)
-- Re-implement this lab with Terraform.
-- Add canary/chaos test step and capture MTTR metrics.
-- Add CI validation (lint + policy checks) before deployment.
+## Exam Question
+**Q:** Which service blocks HTTP layer attacks such as SQL injection on an ALB?
+
+**A:** AWS WAF, because it inspects web requests at layer 7 and can match patterns or managed rules.
+
+## Cleanup
+- Disassociate the web ACL from the ALB.
+- Delete the ACL and test rules.
+- Remove any log delivery resources created for the lab.
+

@@ -1,130 +1,59 @@
-# Lab 04: EBS vs EFS vs Instance Store Decision Lab
+# Lab 04: EBS, EFS, and Instance Store
 
 ## Business Scenario
-You are the cloud architect for a team preparing production-grade AWS workloads and SAA-C03 interview/exam scenarios. This lab simulates real design decisions under constraints (security, availability, latency, and cost).
+A content-processing workload needs durable block storage, shared file storage, and fast scratch space for temporary jobs.
 
 ## Core Services
-EC2, EBS, EFS
-
-## Learning Outcomes
-- Benchmark and choose storage types by durability, latency, and cost behavior.
-- Explain *why* one option is better than alternatives for the given constraints.
-- Produce evidence (screenshots/logs/metrics) to defend your architecture decision.
-
-## Difficulty / Time / Cost
-- **Difficulty**: Intermediate → Advanced
-- **Estimated time**: 90–180 minutes
-- **Estimated cost**: Low-to-medium (depends on runtime; terminate resources immediately after validation)
-
-## Exam Domain Mapping (SAA-C03)
-- **Secure architectures**: IAM boundaries, encryption, least-privilege validation.
-- **Resilient architectures**: fault isolation across AZs, failure testing, recovery checks.
-- **High-performing architectures**: right service choices, scaling patterns, latency checks.
-- **Cost-optimized architectures**: right-sizing, lifecycle policies, managed-service trade-offs.
-
-## Lab Format (How to run)
-1. Build exactly as described.
-2. Record observations after each phase (latency, cost, availability).
-3. Break one component intentionally (failure injection).
-4. Verify monitoring + recovery behavior.
-5. Clean up everything at the end.
-
-
-## Prerequisites
-- AWS account (preferably sandbox) + admin role for lab setup.
-- AWS CLI configured (`aws configure`) and default region selected.
-- Basic familiarity with IAM, VPC, EC2, and CloudWatch.
-- Tagging standard prepared: `Project=SAA-Lab-04`, `Owner=<your-name>`, `TTL=<date>`.
+EBS, EFS, EC2 Instance Store
 
 ## Target Architecture
 ```mermaid
 graph TD
-    U[Engineer] --> C[AWS Console / CLI]
-    C --> I[IAM + KMS Controls]
-    C --> N[VPC Network Boundary]
-    N --> A[Application Layer]
-    A --> D[Data Layer]
-    A --> O[Observability: CW Logs/Metrics]
-    D --> B[Backup / DR Controls]
+  EC2[EC2 worker] --> EBS[EBS volume]
+  EC2 --> EFS[EFS shared file system]
+  EC2 --> Scratch[Instance store scratch]
 ```
 
-## Implementation Phases (Detailed)
-### Phase 0 — Planning & Guardrails
-1. Define workload requirement in one paragraph (SLA, security class, RTO/RPO, budget ceiling).
-2. Create mandatory tags and naming convention for every resource.
-3. Decide “must-have controls” before deployment (encryption, logging, alerting).
+## Step-by-Step
+1. Provision an EBS volume for persistent block data.
+2. Create an EFS file system and mount target for shared files.
+3. Use instance store only for temporary scratch and verify what survives a stop/start.
 
-### Phase 1 — Foundation Build
-1. Provision required network and identity prerequisites.
-2. Create baseline roles/policies with least privilege (avoid wildcard actions/resources).
-3. Enable baseline logs/metrics before workload launch.
-
-### Phase 2 — Workload Deployment
-1. Deploy workload components for this lab objective.
-2. Apply security controls (encryption at rest/in transit, inbound restrictions, secret isolation).
-3. Configure scaling/failover behavior where applicable.
-
-### Phase 3 — Validation (Functional + Security)
-1. Run happy-path functional test (expected business behavior).
-2. Run negative test (blocked access / invalid input / forced failure).
-3. Confirm logs capture both success and failure events.
-
-### Phase 4 — Resilience / Performance Test
-1. Simulate single-component disruption.
-2. Measure time to recover, error rate impact, and user-visible behavior.
-3. Document whether requirements were met.
-
-### Phase 5 — Cost & Operational Review
-1. List top cost drivers from this design.
-2. Propose at least 2 cheaper alternatives and explain trade-offs.
-3. Add alarms/budgets for runaway cost risk.
-
-### Phase 6 — Evidence Pack
-Collect:
-- Console screenshots for architecture and security settings.
-- CLI outputs for core resources.
-- CloudWatch metrics/alarms proving system behavior.
-- A short postmortem paragraph (what failed, why, and mitigation).
-
-## Validation Checklist (Must Pass)
-- [ ] Required resources created with correct tags.
-- [ ] Least-privilege access confirmed (no unnecessary wildcard permissions).
-- [ ] Encryption configured where data is stored.
-- [ ] Monitoring and alerting enabled for critical signals.
-- [ ] Failure test executed and documented.
-- [ ] Cleanup tested and verified.
-
-## CLI Verification Examples
+## CLI Commands
 ```bash
-aws sts get-caller-identity
-aws resourcegroupstaggingapi get-resources --tag-filters Key=Project,Values=SAA-Lab-04
-aws cloudwatch describe-alarms --max-records 20
+aws ec2 create-volume --availability-zone ap-southeast-1a --size 20 --volume-type gp3
+aws efs create-file-system --creation-token lab04-efs
+aws efs create-mount-target --file-system-id fs-12345678 --subnet-id subnet-12345678 --security-groups sg-12345678
+aws ec2 attach-volume --volume-id vol-12345678 --instance-id i-12345678 --device /dev/sdf
 ```
 
-## Troubleshooting Playbook
-- If deployment fails, check IAM permission boundaries and service-linked roles.
-- If connectivity fails, inspect route tables, SG/NACL, endpoint policies, and DNS settings.
-- If failover doesn’t trigger, verify health checks/thresholds and cooldown timers.
-- If logs are empty, confirm agent/integration and IAM write permissions to log groups.
+## Expected Output
+- EBS is available before attach and in-use after attach.
+- EFS mount targets are available in each AZ used.
+- Instance store data disappears after stop/start or termination.
 
-## Common SAA-C03 Traps for This Topic
-1. Choosing a service that solves performance but violates security requirement.
-2. Assuming HA == DR (it is not; DR includes region-level recovery design).
-3. Ignoring operational burden when a managed option exists.
-4. Over-engineering for rare edge cases while missing baseline controls.
+## Failure Injection
+Put a file on instance store, stop the instance, and confirm the data does not survive.
 
-## Exam-Style Questions
-1. Which design change improves resilience with the smallest operational overhead?
-2. Which option best reduces cost without violating RTO/RPO?
-3. Which control enforces least privilege most effectively in this scenario?
+## Decision Trade-offs
+| Option | Best for | Pros | Cons |
+| --- | --- | --- | --- |
+| EBS | Persistent block storage | Durable and easy to snapshot | One instance attachment pattern. |
+| EFS | Shared POSIX files | Multi-AZ and shared access | Higher latency and cost. |
+| Instance store | Scratch space | Very fast | Not durable. |
 
-## Cleanup (Strict)
-1. Delete app/data resources created by this lab.
-2. Remove temporary IAM roles/policies not reused.
-3. Delete network artifacts created solely for the lab.
-4. Confirm zero unexpected running resources via Cost Explorer next day.
+## Common Mistakes
+- Using instance store for durable data.
+- Mounting EFS without security group rules.
+- Choosing EBS when the workload needs shared multi-instance access.
 
-## Extension Challenges (Optional, Advanced)
-- Re-implement this lab with Terraform.
-- Add canary/chaos test step and capture MTTR metrics.
-- Add CI validation (lint + policy checks) before deployment.
+## Exam Question
+**Q:** Which storage option should be used for shared POSIX files across multiple EC2 instances?
+
+**A:** EFS, because it is a managed shared file system that multiple instances can mount concurrently.
+
+## Cleanup
+- Detach and delete the EBS volume.
+- Delete the EFS file system and mount targets.
+- Terminate any test instances used for the mount validation.
+

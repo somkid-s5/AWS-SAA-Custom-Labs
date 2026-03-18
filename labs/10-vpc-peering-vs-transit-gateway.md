@@ -1,130 +1,60 @@
-# Lab 10: VPC Peering vs Transit Gateway at Scale
+# Lab 10: VPC Peering vs Transit Gateway
 
 ## Business Scenario
-You are the cloud architect for a team preparing production-grade AWS workloads and SAA-C03 interview/exam scenarios. This lab simulates real design decisions under constraints (security, availability, latency, and cost).
+The company has multiple VPCs today and expects more shared services later, so the network design must scale cleanly.
 
 ## Core Services
-VPC Peering, TGW
-
-## Learning Outcomes
-- Compare operability and route complexity for multi-VPC topologies.
-- Explain *why* one option is better than alternatives for the given constraints.
-- Produce evidence (screenshots/logs/metrics) to defend your architecture decision.
-
-## Difficulty / Time / Cost
-- **Difficulty**: Intermediate → Advanced
-- **Estimated time**: 90–180 minutes
-- **Estimated cost**: Low-to-medium (depends on runtime; terminate resources immediately after validation)
-
-## Exam Domain Mapping (SAA-C03)
-- **Secure architectures**: IAM boundaries, encryption, least-privilege validation.
-- **Resilient architectures**: fault isolation across AZs, failure testing, recovery checks.
-- **High-performing architectures**: right service choices, scaling patterns, latency checks.
-- **Cost-optimized architectures**: right-sizing, lifecycle policies, managed-service trade-offs.
-
-## Lab Format (How to run)
-1. Build exactly as described.
-2. Record observations after each phase (latency, cost, availability).
-3. Break one component intentionally (failure injection).
-4. Verify monitoring + recovery behavior.
-5. Clean up everything at the end.
-
-
-## Prerequisites
-- AWS account (preferably sandbox) + admin role for lab setup.
-- AWS CLI configured (`aws configure`) and default region selected.
-- Basic familiarity with IAM, VPC, EC2, and CloudWatch.
-- Tagging standard prepared: `Project=SAA-Lab-10`, `Owner=<your-name>`, `TTL=<date>`.
+VPC Peering, Transit Gateway, Route Tables
 
 ## Target Architecture
 ```mermaid
 graph TD
-    U[Engineer] --> C[AWS Console / CLI]
-    C --> I[IAM + KMS Controls]
-    C --> N[VPC Network Boundary]
-    N --> A[Application Layer]
-    A --> D[Data Layer]
-    A --> O[Observability: CW Logs/Metrics]
-    D --> B[Backup / DR Controls]
+  VPC1[VPC A] --> Peer[VPC peering]
+  VPC2[VPC B] --> Peer
+  VPC3[VPC C] --> TGW[Transit Gateway]
+  TGW --> Shared[Shared services VPC]
 ```
 
-## Implementation Phases (Detailed)
-### Phase 0 — Planning & Guardrails
-1. Define workload requirement in one paragraph (SLA, security class, RTO/RPO, budget ceiling).
-2. Create mandatory tags and naming convention for every resource.
-3. Decide “must-have controls” before deployment (encryption, logging, alerting).
+## Step-by-Step
+1. Create a peering connection between two VPCs and route traffic explicitly.
+2. Create a Transit Gateway and attach multiple VPCs.
+3. Compare what works for two VPCs and what works at scale.
 
-### Phase 1 — Foundation Build
-1. Provision required network and identity prerequisites.
-2. Create baseline roles/policies with least privilege (avoid wildcard actions/resources).
-3. Enable baseline logs/metrics before workload launch.
-
-### Phase 2 — Workload Deployment
-1. Deploy workload components for this lab objective.
-2. Apply security controls (encryption at rest/in transit, inbound restrictions, secret isolation).
-3. Configure scaling/failover behavior where applicable.
-
-### Phase 3 — Validation (Functional + Security)
-1. Run happy-path functional test (expected business behavior).
-2. Run negative test (blocked access / invalid input / forced failure).
-3. Confirm logs capture both success and failure events.
-
-### Phase 4 — Resilience / Performance Test
-1. Simulate single-component disruption.
-2. Measure time to recover, error rate impact, and user-visible behavior.
-3. Document whether requirements were met.
-
-### Phase 5 — Cost & Operational Review
-1. List top cost drivers from this design.
-2. Propose at least 2 cheaper alternatives and explain trade-offs.
-3. Add alarms/budgets for runaway cost risk.
-
-### Phase 6 — Evidence Pack
-Collect:
-- Console screenshots for architecture and security settings.
-- CLI outputs for core resources.
-- CloudWatch metrics/alarms proving system behavior.
-- A short postmortem paragraph (what failed, why, and mitigation).
-
-## Validation Checklist (Must Pass)
-- [ ] Required resources created with correct tags.
-- [ ] Least-privilege access confirmed (no unnecessary wildcard permissions).
-- [ ] Encryption configured where data is stored.
-- [ ] Monitoring and alerting enabled for critical signals.
-- [ ] Failure test executed and documented.
-- [ ] Cleanup tested and verified.
-
-## CLI Verification Examples
+## CLI Commands
 ```bash
-aws sts get-caller-identity
-aws resourcegroupstaggingapi get-resources --tag-filters Key=Project,Values=SAA-Lab-10
-aws cloudwatch describe-alarms --max-records 20
+aws ec2 create-vpc-peering-connection --vpc-id vpc-a --peer-vpc-id vpc-b
+aws ec2 create-route --route-table-id rtb-a --destination-cidr-block 10.20.0.0/16 --vpc-peering-connection-id pcx-12345678
+aws ec2 create-transit-gateway
+aws ec2 attach-transit-gateway-vpc --transit-gateway-id tgw-12345678 --vpc-id vpc-c --subnet-ids subnet-123 subnet-456
 ```
 
-## Troubleshooting Playbook
-- If deployment fails, check IAM permission boundaries and service-linked roles.
-- If connectivity fails, inspect route tables, SG/NACL, endpoint policies, and DNS settings.
-- If failover doesn’t trigger, verify health checks/thresholds and cooldown timers.
-- If logs are empty, confirm agent/integration and IAM write permissions to log groups.
+## Expected Output
+- Peering works only for the explicitly connected pair.
+- Transit Gateway supports hub-and-spoke routing.
+- Route tables must be updated on both sides.
 
-## Common SAA-C03 Traps for This Topic
-1. Choosing a service that solves performance but violates security requirement.
-2. Assuming HA == DR (it is not; DR includes region-level recovery design).
-3. Ignoring operational burden when a managed option exists.
-4. Over-engineering for rare edge cases while missing baseline controls.
+## Failure Injection
+Try to route VPC A to VPC C through VPC B using peering and confirm transitive routing does not happen.
 
-## Exam-Style Questions
-1. Which design change improves resilience with the smallest operational overhead?
-2. Which option best reduces cost without violating RTO/RPO?
-3. Which control enforces least privilege most effectively in this scenario?
+## Decision Trade-offs
+| Option | Best for | Strength | Weakness |
+| --- | --- | --- | --- |
+| VPC peering | Small number of VPCs | Simple and cheap | No transitive routing. |
+| Transit Gateway | Many VPCs | Scales well | More cost and planning. |
+| VPN | Hybrid connectivity | Works on the internet | Not ideal for east-west VPC traffic. |
 
-## Cleanup (Strict)
-1. Delete app/data resources created by this lab.
-2. Remove temporary IAM roles/policies not reused.
-3. Delete network artifacts created solely for the lab.
-4. Confirm zero unexpected running resources via Cost Explorer next day.
+## Common Mistakes
+- Expecting transitive routing with peering.
+- Ignoring overlapping CIDR ranges.
+- Updating only one side of the route table.
 
-## Extension Challenges (Optional, Advanced)
-- Re-implement this lab with Terraform.
-- Add canary/chaos test step and capture MTTR metrics.
-- Add CI validation (lint + policy checks) before deployment.
+## Exam Question
+**Q:** Which option is the better long-term fit for many VPCs and shared services?
+
+**A:** Transit Gateway, because it supports hub-and-spoke routing and scales better than many peering connections.
+
+## Cleanup
+- Delete the peering connection and TGW attachments.
+- Remove routes created for the lab.
+- Delete the Transit Gateway if it was created only for testing.
+

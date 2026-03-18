@@ -1,130 +1,60 @@
-# Lab 17: ECS Fargate Service Deployment and Rolling Updates
+# Lab 17: ECS Fargate Basics
 
 ## Business Scenario
-You are the cloud architect for a team preparing production-grade AWS workloads and SAA-C03 interview/exam scenarios. This lab simulates real design decisions under constraints (security, availability, latency, and cost).
+A container team wants to run a stateless service without managing EC2 hosts or patching the underlying fleet.
 
 ## Core Services
-ECS, Fargate, ALB
-
-## Learning Outcomes
-- Run containers serverlessly with health checks, scaling, and deployment safety.
-- Explain *why* one option is better than alternatives for the given constraints.
-- Produce evidence (screenshots/logs/metrics) to defend your architecture decision.
-
-## Difficulty / Time / Cost
-- **Difficulty**: Intermediate → Advanced
-- **Estimated time**: 90–180 minutes
-- **Estimated cost**: Low-to-medium (depends on runtime; terminate resources immediately after validation)
-
-## Exam Domain Mapping (SAA-C03)
-- **Secure architectures**: IAM boundaries, encryption, least-privilege validation.
-- **Resilient architectures**: fault isolation across AZs, failure testing, recovery checks.
-- **High-performing architectures**: right service choices, scaling patterns, latency checks.
-- **Cost-optimized architectures**: right-sizing, lifecycle policies, managed-service trade-offs.
-
-## Lab Format (How to run)
-1. Build exactly as described.
-2. Record observations after each phase (latency, cost, availability).
-3. Break one component intentionally (failure injection).
-4. Verify monitoring + recovery behavior.
-5. Clean up everything at the end.
-
-
-## Prerequisites
-- AWS account (preferably sandbox) + admin role for lab setup.
-- AWS CLI configured (`aws configure`) and default region selected.
-- Basic familiarity with IAM, VPC, EC2, and CloudWatch.
-- Tagging standard prepared: `Project=SAA-Lab-17`, `Owner=<your-name>`, `TTL=<date>`.
+ECS, Fargate, ALB, CloudWatch Logs
 
 ## Target Architecture
 ```mermaid
 graph TD
-    U[Engineer] --> C[AWS Console / CLI]
-    C --> I[IAM + KMS Controls]
-    C --> N[VPC Network Boundary]
-    N --> A[Application Layer]
-    A --> D[Data Layer]
-    A --> O[Observability: CW Logs/Metrics]
-    D --> B[Backup / DR Controls]
+  User[User] --> ALB[ALB]
+  ALB --> ECS[ECS service]
+  ECS --> Task[Fargate task]
+  Task --> Logs[CloudWatch Logs]
 ```
 
-## Implementation Phases (Detailed)
-### Phase 0 — Planning & Guardrails
-1. Define workload requirement in one paragraph (SLA, security class, RTO/RPO, budget ceiling).
-2. Create mandatory tags and naming convention for every resource.
-3. Decide “must-have controls” before deployment (encryption, logging, alerting).
+## Step-by-Step
+1. Register a task definition.
+2. Create an ECS service using the Fargate launch type.
+3. Send traffic through an ALB and verify the task stays healthy.
 
-### Phase 1 — Foundation Build
-1. Provision required network and identity prerequisites.
-2. Create baseline roles/policies with least privilege (avoid wildcard actions/resources).
-3. Enable baseline logs/metrics before workload launch.
-
-### Phase 2 — Workload Deployment
-1. Deploy workload components for this lab objective.
-2. Apply security controls (encryption at rest/in transit, inbound restrictions, secret isolation).
-3. Configure scaling/failover behavior where applicable.
-
-### Phase 3 — Validation (Functional + Security)
-1. Run happy-path functional test (expected business behavior).
-2. Run negative test (blocked access / invalid input / forced failure).
-3. Confirm logs capture both success and failure events.
-
-### Phase 4 — Resilience / Performance Test
-1. Simulate single-component disruption.
-2. Measure time to recover, error rate impact, and user-visible behavior.
-3. Document whether requirements were met.
-
-### Phase 5 — Cost & Operational Review
-1. List top cost drivers from this design.
-2. Propose at least 2 cheaper alternatives and explain trade-offs.
-3. Add alarms/budgets for runaway cost risk.
-
-### Phase 6 — Evidence Pack
-Collect:
-- Console screenshots for architecture and security settings.
-- CLI outputs for core resources.
-- CloudWatch metrics/alarms proving system behavior.
-- A short postmortem paragraph (what failed, why, and mitigation).
-
-## Validation Checklist (Must Pass)
-- [ ] Required resources created with correct tags.
-- [ ] Least-privilege access confirmed (no unnecessary wildcard permissions).
-- [ ] Encryption configured where data is stored.
-- [ ] Monitoring and alerting enabled for critical signals.
-- [ ] Failure test executed and documented.
-- [ ] Cleanup tested and verified.
-
-## CLI Verification Examples
+## CLI Commands
 ```bash
-aws sts get-caller-identity
-aws resourcegroupstaggingapi get-resources --tag-filters Key=Project,Values=SAA-Lab-17
-aws cloudwatch describe-alarms --max-records 20
+aws ecs create-cluster --cluster-name lab17-cluster
+aws ecs register-task-definition --cli-input-json file://taskdef.json
+aws ecs create-service --cluster lab17-cluster --service-name lab17-service --task-definition lab17-task --desired-count 2 --launch-type FARGATE
+aws ecs update-service --cluster lab17-cluster --service lab17-service --desired-count 3
 ```
 
-## Troubleshooting Playbook
-- If deployment fails, check IAM permission boundaries and service-linked roles.
-- If connectivity fails, inspect route tables, SG/NACL, endpoint policies, and DNS settings.
-- If failover doesn’t trigger, verify health checks/thresholds and cooldown timers.
-- If logs are empty, confirm agent/integration and IAM write permissions to log groups.
+## Expected Output
+- Tasks show as RUNNING without EC2 host management.
+- ALB health checks stay green for healthy tasks.
+- Logs stream to CloudWatch with the task execution role.
 
-## Common SAA-C03 Traps for This Topic
-1. Choosing a service that solves performance but violates security requirement.
-2. Assuming HA == DR (it is not; DR includes region-level recovery design).
-3. Ignoring operational burden when a managed option exists.
-4. Over-engineering for rare edge cases while missing baseline controls.
+## Failure Injection
+Crash one task or scale the service and confirm ECS replaces the task without manual intervention.
 
-## Exam-Style Questions
-1. Which design change improves resilience with the smallest operational overhead?
-2. Which option best reduces cost without violating RTO/RPO?
-3. Which control enforces least privilege most effectively in this scenario?
+## Decision Trade-offs
+| Option | Best for | Strength | Weakness |
+| --- | --- | --- | --- |
+| Fargate | No-host containers | Low ops | Less host control. |
+| ECS on EC2 | Custom hosts | More tuning options | More fleet management. |
+| App Runner | Simple web services | Very easy | Less control. |
 
-## Cleanup (Strict)
-1. Delete app/data resources created by this lab.
-2. Remove temporary IAM roles/policies not reused.
-3. Delete network artifacts created solely for the lab.
-4. Confirm zero unexpected running resources via Cost Explorer next day.
+## Common Mistakes
+- Missing task execution role permissions.
+- Using the wrong CPU and memory combination.
+- Forgetting container health checks and log configuration.
 
-## Extension Challenges (Optional, Advanced)
-- Re-implement this lab with Terraform.
-- Add canary/chaos test step and capture MTTR metrics.
-- Add CI validation (lint + policy checks) before deployment.
+## Exam Question
+**Q:** Which container option is best when the team wants to avoid managing servers?
+
+**A:** ECS on Fargate, because AWS manages the underlying compute capacity.
+
+## Cleanup
+- Delete the ECS service and cluster.
+- Remove the task definition revisions if they are not reused.
+- Delete the ALB and target group.
+
