@@ -41,14 +41,36 @@ export ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 export PROJECT_TAG=SAA-Lab-05
 export DB_SUBNET_GROUP="lab05-subnets"
 export DB_IDENTIFIER="lab05-db"
+
+# ดึง VPC ID จาก Lab 01
+export VPC_ID=$(aws ec2 describe-vpcs \
+  --filters "Name=tag:Project,Values=SAA-Lab-01" \
+  --query 'Vpcs[0].VpcId' --output text)
+
+# ดึง Subnet แรก (สร้างใน Lab 01 AZ-a)
 export SUBNET1=$(aws ec2 describe-subnets \
   --filters "Name=tag:Project,Values=SAA-Lab-01" "Name=tag:Name,Values=Isolated-Subnet" \
   --query 'Subnets[0].SubnetId' --output text)
 
-# RDS Subnet Group ต้องการอย่างน้อย 2 AZ — สร้าง Subnet ที่ 2 ใน AZ อื่นก่อน
+# ⚠️ หมายเหตุ: RDS Subnet Group ต้องการ Subnet อย่างน้อย 2 AZ
+# Lab 01 สร้าง Isolated-Subnet ใน AZ เดียว — ต้องสร้าง Subnet ที่ 2 ใน AZ อื่นก่อน
+# รันคำสั่งด้านล่างนี้ก่อน ถ้ายังไม่มี Isolated-Subnet-2
 export SUBNET2=$(aws ec2 describe-subnets \
   --filters "Name=tag:Project,Values=SAA-Lab-01" "Name=tag:Name,Values=Isolated-Subnet-2" \
   --query 'Subnets[0].SubnetId' --output text)
+
+if [ "$SUBNET2" = "None" ] || [ -z "$SUBNET2" ]; then
+  echo "Isolated-Subnet-2 ไม่มีอยู่ — กำลังสร้างใหม่ใน AZ-b..."
+  SUBNET2=$(aws ec2 create-subnet \
+    --vpc-id $VPC_ID \
+    --cidr-block 10.0.4.0/24 \
+    --availability-zone ${AWS_REGION}b \
+    --tag-specifications "ResourceType=subnet,Tags=[{Key=Name,Value=Isolated-Subnet-2},{Key=Project,Value=SAA-Lab-01}]" \
+    --query 'Subnet.SubnetId' --output text)
+  echo "สร้าง SUBNET2 สำเร็จ: $SUBNET2"
+else
+  echo "พบ SUBNET2: $SUBNET2"
+fi
 ```
 
 ---

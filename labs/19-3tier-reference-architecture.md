@@ -174,7 +174,16 @@ aws rds create-db-instance \
 #### 🖥️ วิธีทำผ่าน AWS Console (GUI)
 
 1. **Target Group**: ไปที่ **EC2 → Target Groups → Create** → Type: Instances → Port 80 → VPC: Lab19-VPC
-2. **Launch Template**: EC2 → Launch Templates → Create → Instance Type: `t3.micro` → SG: `lab19-app-sg`
+2. **Launch Template**: EC2 → Launch Templates → Create:
+   - Instance Type: `t3.micro` → SG: `lab19-app-sg`
+   - **Advanced details → User data** → วาง script นี้:
+     ```
+     #!/bin/bash
+     dnf install -y httpd
+     systemctl enable httpd && systemctl start httpd
+     echo "<h1>Lab19 App Tier - $(hostname -f)</h1>" > /var/www/html/index.html
+     ```
+   > ⚠️ **ต้องใส่ User Data** — ถ้าไม่มี httpd Instance จะไม่ตอบ port 80 และ ALB Health Check จะ Fail ทุกตัว
 3. **Auto Scaling**: EC2 → Auto Scaling Groups → Create:
    - Template: Lab19 → VPC: Lab19-VPC → Subnets: App-Private-1, App-Private-2
    - Min: 2, Desired: 2, Max: 4
@@ -189,12 +198,24 @@ AMI_ID=$(aws ssm get-parameter \
   --query 'Parameter.Value' --output text)
 echo "Latest Amazon Linux 2023 AMI: $AMI_ID"
 
-# Launch Template
+# Encode UserData (ต้องมี httpd เพื่อให้ ALB Health Check ผ่าน)
+# ถ้าไม่มี UserData: Instance สร้างขึ้นมาปกติ แต่ไม่มีอะไรรันบน port 80
+# ผลคือ ALB จะ mark ทุก Instance เป็น Unhealthy และไม่ส่ง Traffic ใดๆ เลย
+USER_DATA=$(base64 -w 0 <<'USERDATA'
+#!/bin/bash
+dnf install -y httpd
+systemctl enable httpd && systemctl start httpd
+echo "<h1>Lab19 App Tier - $(hostname -f)</h1>" > /var/www/html/index.html
+USERDATA
+)
+
+# Launch Template พร้อม UserData
 cat <<EOF > template.json
 {
   "ImageId": "$AMI_ID",
   "InstanceType": "t3.micro",
-  "SecurityGroupIds": ["$SG_APP"]
+  "SecurityGroupIds": ["$SG_APP"],
+  "UserData": "$USER_DATA"
 }
 EOF
 aws ec2 create-launch-template \
