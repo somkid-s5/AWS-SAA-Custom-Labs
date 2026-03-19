@@ -4,8 +4,8 @@
 - Difficulty: Intermediate
 - Time estimate: 20–30 minutes
 - Estimated cost: Free Tier eligible (แนะนำใช้ Instance ขนาดเล็ก)
-- Prerequisites: Lab 01 (VPC with public/private subnets)
-- Depends on: Lab 01
+- Prerequisites: Lab 01 (VPC + Public Subnet สำหรับสร้าง EC2)
+- Depends on: Lab 01 — ใช้ `Public-Subnet` จาก Lab 01 สำหรับ Launch EC2 Instance
 
 ## Learning Objectives
 หลังจากทำ Lab นี้เสร็จ ผู้เรียนจะสามารถ:

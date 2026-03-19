@@ -124,12 +124,12 @@ aws elbv2 create-listener \
 1. ไปที่ **EC2 → Launch Templates** → คลิก **Create launch template**
 2. กำหนดค่า:
    - Name: `lab06-template`
-   - AMI: Amazon Linux 2 (ค้นหา `amzn2-ami-hvm`)
+   - AMI: **Amazon Linux 2023** (ค้นหา `al2023-ami` — ไม่ใช้ Amazon Linux 2 ซึ่ง EOL แล้ว)
    - Instance type: `t3.micro`
 3. ส่วน **Advanced details → User data** วาง script:
    ```bash
    #!/bin/bash
-   yum install -y httpd
+   dnf install -y httpd
    echo "Hello from $(hostname -f)" > /var/www/html/index.html
    systemctl start httpd
    systemctl enable httpd
@@ -141,7 +141,7 @@ aws elbv2 create-listener \
 ```bash
 cat <<'EOF' > user_data.sh
 #!/bin/bash
-yum install -y httpd
+dnf install -y httpd
 echo "Hello from $(hostname -f)" > /var/www/html/index.html
 systemctl start httpd
 systemctl enable httpd
@@ -149,10 +149,15 @@ EOF
 
 USER_DATA_B64=$(base64 -w 0 user_data.sh)
 
+# ใช้ Amazon Linux 2023 (AL2023) — Amazon Linux 2 EOL แล้ว ไม่แนะนำสำหรับ Lab ใหม่
+AMI_ID=$(aws ssm get-parameter \
+  --name "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64" \
+  --query 'Parameter.Value' --output text)
+
 aws ec2 create-launch-template \
   --launch-template-name lab06-template \
   --launch-template-data "{
-    \"ImageId\": \"resolve:ssm:/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2\",
+    \"ImageId\": \"$AMI_ID\",
     \"InstanceType\": \"t3.micro\",
     \"UserData\": \"$USER_DATA_B64\"
   }"

@@ -36,8 +36,93 @@ else
 fi
 
 # ===========================================================================
-# Labs ที่ใช้ VPC ของตัวเอง (ลบก่อน — ไม่มี Dependency กับ Lab 01)
+# Labs ที่ใช้ Resources ของตัวเอง (ลบก่อน — ไม่มี Dependency กับ Lab 01)
 # ===========================================================================
+
+echo ""
+echo "─── Lab 13: KMS + Secrets Manager + Parameter Store ───"
+# KMS Keys: Disable ก่อน (ลบทันทีไม่ได้ — ต้องกำหนด PendingWindowInDays)
+for KEY_ID in $(aws kms list-aliases \
+  --query "Aliases[?starts_with(AliasName,'alias/lab13')].TargetKeyId" \
+  --output text 2>/dev/null); do
+  aws kms disable-key --key-id "$KEY_ID" 2>/dev/null || true
+  aws kms schedule-key-deletion --key-id "$KEY_ID" --pending-window-in-days 7 2>/dev/null || true
+  echo "  ⏳ KMS Key $KEY_ID กำหนดลบใน 7 วัน"
+done
+# Secrets Manager
+for SECRET in $(aws secretsmanager list-secrets \
+  --query "SecretList[?starts_with(Name,'lab13')].Name" --output text 2>/dev/null); do
+  safe_delete "aws secretsmanager delete-secret --secret-id $SECRET --force-delete-without-recovery"
+done
+# Parameter Store
+for PARAM in $(aws ssm describe-parameters \
+  --query "Parameters[?starts_with(Name,'/lab13')].Name" --output text 2>/dev/null); do
+  safe_delete "aws ssm delete-parameter --name $PARAM"
+done
+
+echo ""
+echo "─── Lab 14: WAF + ALB + Shield ───"
+# WAF WebACLs
+for ACL_ID in $(aws wafv2 list-web-acls --scope REGIONAL \
+  --query "WebACLs[?starts_with(Name,'lab14')].{ID:Id,Name:Name}" \
+  --output text 2>/dev/null | awk '{print $1}'); do
+  ACL_LOCK=$(aws wafv2 get-web-acl --scope REGIONAL --id "$ACL_ID" --name "lab14-acl" \
+    --query 'LockToken' --output text 2>/dev/null || echo "")
+  if [ -n "$ACL_LOCK" ]; then
+    safe_delete "aws wafv2 delete-web-acl --scope REGIONAL --id $ACL_ID --name lab14-acl --lock-token $ACL_LOCK"
+  fi
+done
+# IPSets
+for IPSET_ID in $(aws wafv2 list-ip-sets --scope REGIONAL \
+  --query "IPSets[?starts_with(Name,'lab14')].Id" --output text 2>/dev/null); do
+  LOCK=$(aws wafv2 get-ip-set --scope REGIONAL --id "$IPSET_ID" --name "lab14-block-list" \
+    --query 'LockToken' --output text 2>/dev/null || echo "")
+  if [ -n "$LOCK" ]; then
+    safe_delete "aws wafv2 delete-ip-set --scope REGIONAL --id $IPSET_ID --name lab14-block-list --lock-token $LOCK"
+  fi
+done
+
+echo ""
+echo "─── Lab 17: ECS Fargate ───"
+# Scale down tasks first, then delete
+for CLUSTER in $(aws ecs list-clusters \
+  --query "clusterArns[?contains(@,'lab17')]" --output text 2>/dev/null); do
+  for SERVICE in $(aws ecs list-services --cluster "$CLUSTER" \
+    --query 'serviceArns[*]' --output text 2>/dev/null); do
+    safe_delete "aws ecs update-service --cluster $CLUSTER --service $SERVICE --desired-count 0"
+    sleep 5
+    safe_delete "aws ecs delete-service --cluster $CLUSTER --service $SERVICE --force"
+  done
+  echo "  ⏳ รอ Tasks หยุดก่อนลบ Cluster..."
+  sleep 15
+  safe_delete "aws ecs delete-cluster --cluster $CLUSTER"
+done
+# ECR Repository
+safe_delete "aws ecr delete-repository --repository-name lab17-app --force"
+# Task Definition (deregister)
+for TD_ARN in $(aws ecs list-task-definitions \
+  --family-prefix lab17 --query 'taskDefinitionArns[*]' --output text 2>/dev/null); do
+  safe_delete "aws ecs deregister-task-definition --task-definition $TD_ARN"
+done
+# IAM Roles
+safe_delete "aws iam detach-role-policy --role-name Lab17ECSTaskRole \
+  --policy-arn arn:aws:iam::aws:policy/AmazonDynamoDBReadOnlyAccess"
+safe_delete "aws iam delete-role --role-name Lab17ECSTaskRole"
+
+echo ""
+echo "─── Lab 18: ElastiCache ───"
+# ElastiCache Clusters
+for CLUSTER_ID in $(aws elasticache describe-cache-clusters \
+  --query "CacheClusters[?starts_with(CacheClusterId,'lab18')].CacheClusterId" \
+  --output text 2>/dev/null); do
+  safe_delete "aws elasticache delete-cache-cluster --cache-cluster-id $CLUSTER_ID"
+  echo "  ⏳ รอ ElastiCache $CLUSTER_ID ลบ (อาจใช้เวลา 2-3 นาที)..."
+  aws elasticache wait cache-cluster-deleted \
+    --cache-cluster-id "$CLUSTER_ID" 2>/dev/null || true
+done
+# Subnet Group
+safe_delete "aws elasticache delete-cache-subnet-group --cache-subnet-group-name lab18-redis-sg"
+
 
 echo ""
 echo "─── Lab 10: VPC Peering + Transit Gateway ───"

@@ -89,14 +89,14 @@ Labs 03, 04, 07, 10-24 ───────────────────
 | 01 | [VPC from Scratch](labs/01-vpc-from-scratch.md) | VPC, Subnets 2-AZ, IGW | Intermediate | Free | — |
 | 02 | [SG vs NACLs](labs/02-security-groups-vs-nacls.md) | Stateful vs Stateless | Intermediate | Free | ✅ |
 | 03 | [S3 + Lifecycle](labs/03-s3-encryption-lifecycle.md) | Encryption, Lifecycle | Intermediate | Free | ❌ |
-| 04 | [EBS/EFS/Instance Store](labs/04-ebs-efs-instance-store.md) | Storage Trade-offs | Intermediate | Free | ❌ |
+| 04 | [EBS/EFS/Instance Store](labs/04-ebs-efs-instance-store.md) | Storage Trade-offs | Intermediate | Free | ✅ |
 | 05 | [RDS Multi-AZ](labs/05-rds-multi-az-read-replica.md) | HA vs Read Scaling | Advanced | ~$1-3 | ✅ |
 | 06 | [ALB + ASG](labs/06-alb-asg-high-availability.md) | Stateless Web Tier | Intermediate | ~$0.50 | ✅ |
 | 07 | [Lambda + DynamoDB](labs/07-lambda-api-gateway-dynamodb.md) | Serverless CRUD API | Intermediate | Free | ❌ |
 | 08 | [NAT Gateway](labs/08-nat-gateway-private-subnets.md) | Private Egress | Intermediate | ~$0.20 | ✅ |
 | 09 | [VPC Endpoints](labs/09-vpc-endpoints.md) | Private AWS Access | Intermediate | Free | ✅ |
 | 10 | [Peering vs TGW](labs/10-vpc-peering-vs-transit-gateway.md) | Multi-VPC Connect | Advanced | ~$1.20 | ❌ |
-| 11 | [Route 53 Failover](labs/11-route53-failover.md) | DNS-based DR | Intermediate | Free | ❌ |
+| 11 | [Route 53 Failover](labs/11-route53-failover.md) | DNS-based DR | Intermediate | Free | ❌ ⚠️ Domain |
 | 12 | [SNS + SQS + Lambda](labs/12-sns-sqs-lambda.md) | Fanout + DLQ | Intermediate | Free | ❌ |
 | 13 | [KMS + Secrets](labs/13-kms-secrets-parameter-store.md) | Secret Management | Intermediate | Free | ❌ |
 | 14 | [WAF + Shield](labs/14-waf-alb-shield.md) | L7 Protection | Advanced | ~$5/mo | ❌ |
