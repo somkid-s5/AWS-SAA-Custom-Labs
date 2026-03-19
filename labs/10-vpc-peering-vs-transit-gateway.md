@@ -275,9 +275,23 @@ aws ec2 delete-route --route-table-id $RT_B --destination-cidr-block 10.1.0.0/16
 # Step 3 — ลบ Peering Connection
 aws ec2 delete-vpc-peering-connection --vpc-peering-connection-id $PEER_ID
 
-# Step 4 — รอ Attachments ลบเสร็จ แล้วจึงลบ Transit Gateway
-aws ec2 wait transit-gateway-vpc-attachments-deleted \
-  --transit-gateway-attachment-ids $TGW_ATT_A $TGW_ATT_C
+# Step 4 — รอ Attachments เปลี่ยนสถานะเป็น deleted ก่อนลบ TGW
+# (AWS CLI ไม่มี wait command สำหรับ TGW Attachments ต้อง poll ด้วย describe แทน)
+echo "รอ TGW Attachments ลบ... (อาจใช้เวลา 1-2 นาที)"
+for i in {1..12}; do
+  STATUS_A=$(aws ec2 describe-transit-gateway-vpc-attachments \
+    --transit-gateway-attachment-ids $TGW_ATT_A \
+    --query 'TransitGatewayVpcAttachments[0].State' --output text 2>/dev/null)
+  STATUS_C=$(aws ec2 describe-transit-gateway-vpc-attachments \
+    --transit-gateway-attachment-ids $TGW_ATT_C \
+    --query 'TransitGatewayVpcAttachments[0].State' --output text 2>/dev/null)
+  echo "  Att-A: $STATUS_A | Att-C: $STATUS_C"
+  if [[ "$STATUS_A" == "deleted" && "$STATUS_C" == "deleted" ]]; then
+    echo "✅ Attachments ลบเสร็จแล้ว"
+    break
+  fi
+  sleep 10
+done
 aws ec2 delete-transit-gateway --transit-gateway-id $TGW_ID
 
 # Step 5 — ลบ Subnets และ VPCs

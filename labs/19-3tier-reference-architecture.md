@@ -183,10 +183,16 @@ aws rds create-db-instance \
 #### ⌨️ วิธีทำผ่าน CLI
 
 ```bash
+# ดึง AMI ID ล่าสุดผ่าน SSM Parameter Store (ไม่ต้อง Hardcode — ไม่มีปัญหา Deprecated)
+AMI_ID=$(aws ssm get-parameter \
+  --name "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64" \
+  --query 'Parameter.Value' --output text)
+echo "Latest Amazon Linux 2023 AMI: $AMI_ID"
+
 # Launch Template
 cat <<EOF > template.json
 {
-  "ImageId": "ami-0b08bfc6ff7069aff",
+  "ImageId": "$AMI_ID",
   "InstanceType": "t3.micro",
   "SecurityGroupIds": ["$SG_APP"]
 }
