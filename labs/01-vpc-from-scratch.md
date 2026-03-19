@@ -7,12 +7,15 @@
 - Prerequisites: Lab 00 (IAM Setup, optional)
 - Depends on: None
 
+> **📌 หมายเหตุสำคัญสำหรับ Lab ถัดไป:** Lab นี้จะสร้าง Subnet ครบ **6 ตัวข้าม 2 AZ** ซึ่งเป็น Foundation ที่ Lab 02, 05, 06, 08, 09 ต้องการ — ทำ Lab นี้ให้เสร็จก่อนเริ่ม Lab เหล่านั้น
+
 ## Learning Objectives
 หลังจากทำ Lab นี้เสร็จ ผู้เรียนจะสามารถ:
-- ออกแบบและสร้าง VPC ที่มีการแบ่ง Subnet 3 ระดับ (Public, Private, Isolated)
+- ออกแบบและสร้าง VPC พร้อม Subnet 3 ระดับ (Public, Private, Isolated) **ครอบคลุม 2 AZ** สำหรับ HA
 - กำหนด Route Table และผูก Internet Gateway ให้ถูกต้องตามแต่ละ Tier
 - อธิบายความแตกต่างระหว่าง Public, Private และ Isolated Subnet ได้
 - ระบุความเสี่ยงที่เกิดขึ้นเมื่อกำหนด Route Table ผิดประเภท
+- เตรียม VPC Foundation ที่รองรับ Lab 02, 05, 06, 08, 09 โดยไม่ต้องสร้าง VPC ซ้ำ
 
 ## Business Scenario
 แอปพลิเคชันใหม่จำเป็นต้องมีสถาปัตยกรรมเครือข่ายที่พร้อมสำหรับ Production การออกแบบโครงสร้างเครือข่ายตั้งแต่ต้น โดยแบ่งแยก Public Subnet (สำหรับ Load Balancer), Private Subnet (สำหรับ Application) และ Isolated Subnet (สำหรับฐานข้อมูล) อย่างชัดเจนตั้งแต่เริ่มต้น เป็นสิ่งสำคัญอย่างยิ่ง
@@ -60,11 +63,18 @@ export VPC_CIDR="10.10.0.0/16"
    - IPv4 CIDR: `10.10.0.0/16`
 3. คลิก **Create VPC**
 4. เลือก VPC ที่สร้าง → **Actions → Edit VPC settings** → เปิด **Enable DNS hostnames** → Save
-5. ไปที่ **VPC → Subnets** → คลิก **Create subnet** แล้วสร้างทั้ง 3 Subnet:
-   - `Public-Subnet` → CIDR `10.10.1.0/24` → AZ: `ap-southeast-1a`
-   - `Private-Subnet` → CIDR `10.10.2.0/24` → AZ: `ap-southeast-1a`
-   - `Isolated-Subnet` → CIDR `10.10.3.0/24` → AZ: `ap-southeast-1a`
-6. เลือก `Public-Subnet` → **Actions → Edit subnet settings** → เปิด **Enable auto-assign public IPv4 address** → Save
+5. ไปที่ **VPC → Subnets** → คลิก **Create subnet** แล้วสร้างครบ **6 Subnets ข้าม 2 AZ**:
+
+   | Name | CIDR | AZ |
+   |---|---|---|
+   | `Public-Subnet` | `10.10.1.0/24` | ap-southeast-1**a** |
+   | `Public-Subnet-2` | `10.10.2.0/24` | ap-southeast-1**b** |
+   | `Private-Subnet` | `10.10.11.0/24` | ap-southeast-1**a** |
+   | `Private-Subnet-2` | `10.10.12.0/24` | ap-southeast-1**b** |
+   | `Isolated-Subnet` | `10.10.21.0/24` | ap-southeast-1**a** |
+   | `Isolated-Subnet-2` | `10.10.22.0/24` | ap-southeast-1**b** |
+
+6. เลือก `Public-Subnet` และ `Public-Subnet-2` → **Actions → Edit subnet settings** → เปิด **Enable auto-assign public IPv4 address** → Save
 
 #### ⌨️ วิธีทำผ่าน CLI
 
@@ -74,21 +84,39 @@ VPC_ID=$(aws ec2 create-vpc --cidr-block $VPC_CIDR \
   --query 'Vpc.VpcId' --output text)
 aws ec2 modify-vpc-attribute --vpc-id $VPC_ID --enable-dns-hostnames
 
+# Public Subnets × 2 (ข้าม 2 AZ — จำเป็นสำหรับ ALB ใน Lab 06)
 PUB_SUBNET_ID=$(aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.10.1.0/24 \
   --availability-zone ${AWS_REGION}a \
   --tag-specifications "ResourceType=subnet,Tags=[{Key=Project,Value=$PROJECT_TAG},{Key=Name,Value=Public-Subnet}]" \
   --query 'Subnet.SubnetId' --output text)
-PRIV_SUBNET_ID=$(aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.10.2.0/24 \
+PUB_SUBNET_2_ID=$(aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.10.2.0/24 \
+  --availability-zone ${AWS_REGION}b \
+  --tag-specifications "ResourceType=subnet,Tags=[{Key=Project,Value=$PROJECT_TAG},{Key=Name,Value=Public-Subnet-2}]" \
+  --query 'Subnet.SubnetId' --output text)
+
+# Private Subnets × 2 (ข้าม 2 AZ — จำเป็นสำหรับ ASG ใน Lab 06, NAT ใน Lab 08)
+PRIV_SUBNET_ID=$(aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.10.11.0/24 \
   --availability-zone ${AWS_REGION}a \
   --tag-specifications "ResourceType=subnet,Tags=[{Key=Project,Value=$PROJECT_TAG},{Key=Name,Value=Private-Subnet}]" \
   --query 'Subnet.SubnetId' --output text)
-ISOLATED_SUBNET_ID=$(aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.10.3.0/24 \
+PRIV_SUBNET_2_ID=$(aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.10.12.0/24 \
+  --availability-zone ${AWS_REGION}b \
+  --tag-specifications "ResourceType=subnet,Tags=[{Key=Project,Value=$PROJECT_TAG},{Key=Name,Value=Private-Subnet-2}]" \
+  --query 'Subnet.SubnetId' --output text)
+
+# Isolated Subnets × 2 (ข้าม 2 AZ — จำเป็นสำหรับ RDS Multi-AZ ใน Lab 05)
+ISOLATED_SUBNET_ID=$(aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.10.21.0/24 \
   --availability-zone ${AWS_REGION}a \
   --tag-specifications "ResourceType=subnet,Tags=[{Key=Project,Value=$PROJECT_TAG},{Key=Name,Value=Isolated-Subnet}]" \
   --query 'Subnet.SubnetId' --output text)
+ISOLATED_SUBNET_2_ID=$(aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.10.22.0/24 \
+  --availability-zone ${AWS_REGION}b \
+  --tag-specifications "ResourceType=subnet,Tags=[{Key=Project,Value=$PROJECT_TAG},{Key=Name,Value=Isolated-Subnet-2}]" \
+  --query 'Subnet.SubnetId' --output text)
 
-# เปิดให้ Public Subnet จ่าย Public IP โดยอัตโนมัติ
+# เปิดให้ Public Subnets ทั้งสองตัวจ่าย Public IP โดยอัตโนมัติ
 aws ec2 modify-subnet-attribute --subnet-id $PUB_SUBNET_ID --map-public-ip-on-launch
+aws ec2 modify-subnet-attribute --subnet-id $PUB_SUBNET_2_ID --map-public-ip-on-launch
 ```
 
 **Expected output:** VPC ID และ Subnet IDs ถูกบันทึกลงใน Shell variables เรียบร้อย
@@ -118,14 +146,16 @@ IGW_ID=$(aws ec2 create-internet-gateway \
   --query 'InternetGateway.InternetGatewayId' --output text)
 aws ec2 attach-internet-gateway --vpc-id $VPC_ID --internet-gateway-id $IGW_ID
 
-# สร้าง Route Table สำหรับ Public Subnet
+# สร้าง Route Table สำหรับ Public Subnets
 RTB_PUB_ID=$(aws ec2 create-route-table --vpc-id $VPC_ID \
   --tag-specifications "ResourceType=route-table,Tags=[{Key=Project,Value=$PROJECT_TAG},{Key=Name,Value=Public-RT}]" \
   --query 'RouteTable.RouteTableId' --output text)
 aws ec2 create-route --route-table-id $RTB_PUB_ID --destination-cidr-block 0.0.0.0/0 --gateway-id $IGW_ID
 
-# ผูก Route Table กับ Public Subnet เท่านั้น
+# ผูก Route Table กับ Public Subnets ทั้ง 2 ตัว
 aws ec2 associate-route-table --subnet-id $PUB_SUBNET_ID --route-table-id $RTB_PUB_ID
+aws ec2 associate-route-table --subnet-id $PUB_SUBNET_2_ID --route-table-id $RTB_PUB_ID
+# Private และ Isolated Subnets ใช้ Default Route Table (Local only) — ไม่ต้อง Associate
 ```
 
 **Expected output:** คำสั่ง `associate-route-table` คืนค่า `"AssociationState": {"State": "associated"}` แสดงว่าผูกสำเร็จ
@@ -222,15 +252,21 @@ aws ec2 disassociate-route-table --association-id $ASSOC_ID
 ## Cleanup (เรียงลำดับตามนี้เท่านั้น — ห้ามข้ามขั้นตอน)
 
 ```bash
+# ⚠️ ลบ VPC จาก Lab 01 ก็ต่อเมื่อทำ Labs ทั้งหมดที่ใช้ VPC นี้เสร็จแล้ว
+# (Lab 02, 05, 06, 08, 09 ต่างใช้ VPC และ Subnets จาก Lab 01)
+
 # Step 1 — ถอด Internet Gateway และลบ Route Table
 aws ec2 detach-internet-gateway --internet-gateway-id $IGW_ID --vpc-id $VPC_ID
 aws ec2 delete-internet-gateway --internet-gateway-id $IGW_ID
 aws ec2 delete-route-table --route-table-id $RTB_PUB_ID
 
-# Step 2 — ลบ Subnets ทั้งหมด
+# Step 2 — ลบ Subnets ทั้ง 6 ตัว
 aws ec2 delete-subnet --subnet-id $PUB_SUBNET_ID
+aws ec2 delete-subnet --subnet-id $PUB_SUBNET_2_ID
 aws ec2 delete-subnet --subnet-id $PRIV_SUBNET_ID
+aws ec2 delete-subnet --subnet-id $PRIV_SUBNET_2_ID
 aws ec2 delete-subnet --subnet-id $ISOLATED_SUBNET_ID
+aws ec2 delete-subnet --subnet-id $ISOLATED_SUBNET_2_ID
 
 # Step 3 — ลบ VPC
 aws ec2 delete-vpc --vpc-id $VPC_ID
